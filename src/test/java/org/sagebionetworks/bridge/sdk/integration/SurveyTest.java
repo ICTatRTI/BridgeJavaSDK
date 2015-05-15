@@ -28,6 +28,7 @@ import org.sagebionetworks.bridge.sdk.ResearcherClient;
 import org.sagebionetworks.bridge.sdk.TestSurvey;
 import org.sagebionetworks.bridge.sdk.TestUserHelper;
 import org.sagebionetworks.bridge.sdk.TestUserHelper.TestUser;
+import org.sagebionetworks.bridge.sdk.UserClient;
 import org.sagebionetworks.bridge.sdk.exceptions.PublishedSurveyException;
 import org.sagebionetworks.bridge.sdk.exceptions.UnauthorizedException;
 import org.sagebionetworks.bridge.sdk.models.ResourceList;
@@ -46,7 +47,7 @@ import org.sagebionetworks.bridge.sdk.models.surveys.SurveyRule;
 import org.sagebionetworks.bridge.sdk.models.surveys.UiHint;
 
 public class SurveyTest {
-
+    
     private TestUser researcher;
     private TestUser user;
 
@@ -54,20 +55,17 @@ public class SurveyTest {
     public void before() {
         researcher = TestUserHelper.createAndSignInUser(SurveyTest.class, true, Tests.RESEARCHER_ROLE);
         user = TestUserHelper.createAndSignInUser(SurveyTest.class, true);
-
-        ResearcherClient client = researcher.getSession().getResearcherClient();
-        deleteAllSurveysInStudy(client);
     }
 
     @After
     public void after() {
         try {
+            user.signOutAndDeleteUser();
             ResearcherClient client = researcher.getSession().getResearcherClient();
             deleteAllSurveysInStudy(client);
             assertEquals("Should be no surveys.", 0, client.getAllSurveysMostRecent().getTotal());
         } finally {
             researcher.signOutAndDeleteUser();
-            user.signOutAndDeleteUser();
         }
     }
 
@@ -93,6 +91,14 @@ public class SurveyTest {
 
         List<SurveyElement> questions = survey.getElements();
         String prompt = ((SurveyQuestion)questions.get(1)).getPrompt();
+        assertEquals("Prompt is correct.", "When did you last have a medical check-up?", prompt);
+        client.publishSurvey(key);
+        
+        UserClient userClient = user.getSession().getUserClient();
+        survey = userClient.getSurveyMostRecentlyPublished(key.getGuid());
+        // And again, correct
+        questions = survey.getElements();
+        prompt = ((SurveyQuestion)questions.get(1)).getPrompt();
         assertEquals("Prompt is correct.", "When did you last have a medical check-up?", prompt);
     }
 
@@ -297,6 +303,7 @@ public class SurveyTest {
         SurveyQuestion question = new SurveyQuestion();
         question.setIdentifier("bar");
         question.setPrompt("Prompt");
+        question.setFireEvent(true);
         question.setUiHint(UiHint.TEXTFIELD);
         question.setConstraints(new StringConstraints());
         survey.getElements().add(question);
@@ -317,6 +324,14 @@ public class SurveyTest {
         assertEquals("https://pbs.twimg.com/profile_images/1642204340/ReferencePear_400x400.PNG", newScreen.getImage().getSource());
         assertEquals(400, newScreen.getImage().getWidth());
         assertEquals(400, newScreen.getImage().getHeight());
+        
+        SurveyQuestion newQuestion = (SurveyQuestion)newSurvey.getElements().get(1);
+        assertEquals(SurveyQuestion.class, newQuestion.getClass());
+        assertNotNull(newQuestion.getGuid());
+        assertEquals("bar", newQuestion.getIdentifier());
+        assertEquals("Prompt", newQuestion.getPrompt());
+        assertEquals(true, newQuestion.getFireEvent());
+        assertEquals(UiHint.TEXTFIELD, newQuestion.getUIHint());
     }
 
     private Constraints getConstraints(Survey survey, String id) {
